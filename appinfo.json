@@ -9,6 +9,11 @@
     "resources": {
         "media": [
             {
+                "file": "images/highlights_timer.png",
+                "name": "highlights_background",
+                "type": "png"
+            },
+            {
                 "characterRegex": "[0-9:.]",
                 "file": "fonts/perfect-dos-vga.ttf",
                 "name": "FONT_PERFECT_DOS_48",
