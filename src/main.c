@@ -3,17 +3,9 @@
 const short MAX_RUN_MINUTES = 10;
 const short MAX_COMMENTS = 30;
 
-static Window *s_main_window;
-static Layer *s_canvas_layer;
-static TextLayer *s_timer_layer;
-static GFont *s_timer_font;
-
-static BitmapLayer *s_background_layer;
-static GBitmap *s_background_bitmap;
-
 int s_seconds_ellapsed = 0;
 
-bool isPaused = true;
+bool is_paused = true;
 
 // TODO: Replace magic number with MAX_COMMENTS
 short comments[ 30 ]; 
@@ -24,6 +16,20 @@ struct time {
 	short seconds;
 };
 
+/* Main Window */ 
+static Window *s_main_window;
+static Layer *s_canvas_layer;
+static TextLayer *s_timer_layer;
+static GFont *s_timer_font;
+
+static BitmapLayer *s_background_layer;
+static GBitmap *s_background_bitmap;
+
+/* Summary Window*/
+// TODO: Organize across multipe source files and sort functions
+static Window *s_summary_window;
+static TextLayer *s_summary_text;
+
 
 /* -- Method declarations -- */
 
@@ -31,7 +37,7 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed);
 
 void handle_scheduled_vibrations(struct time t);
 
-void set_paused(bool pause);
+void set_Paused(bool pause);
 
 void update_timer_display(struct time t);
 
@@ -71,11 +77,11 @@ void handle_scheduled_vibrations(struct time t) {
 	}
 }
 
-bool is_paused() {
-	return isPaused;
+bool is_Paused() {
+	return is_paused;
 }
 
-void set_paused(bool pause) {
+void set_Paused(bool pause) {
 	
 	if (pause) {
 		// Stop ticking
@@ -83,10 +89,11 @@ void set_paused(bool pause) {
 	}
 	else {
 		// Start ticking
-		tick_timer_service_subscribe(SECOND_UNIT , tick_handler);	
+		tick_timer_service_subscribe(SECOND_UNIT , tick_handler);
+		vibes_short_pulse();
 	}
 	
-	isPaused = pause;
+	is_paused = pause;
 	
 	// TODO: Toggle paused/play icon
 }
@@ -134,7 +141,7 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 	
 	if (t.minutes >= MAX_RUN_MINUTES) {
 		// TODO: Make this optional and configurable in settings.
-		set_paused(true);
+		set_Paused(true);
 		
 		// TODO: Show summary screen
 		//  Total comments; Speaker time, etc.
@@ -149,11 +156,11 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 
 void select_single_click_handler(ClickRecognizerRef recognizer, void *context) {  
   // Toggle paused state
-	if (is_paused()) {
-		set_paused(false);
+	if (is_Paused()) {
+		set_Paused(false);
 	}
 	else {
-		set_paused(true);
+		set_Paused(true);
 	}	
 }
 
@@ -174,18 +181,30 @@ void up_single_click_handler(ClickRecognizerRef recognizer, void *context) {
 	add_comment();
 }
 
-void click_config_provider(Window *window) {
- // single select click:
-  window_single_click_subscribe(BUTTON_ID_SELECT, select_single_click_handler);
+void end_talk_and_display_summary() {
+	set_Paused(true);
 	
-	window_single_click_subscribe(BUTTON_ID_UP, up_single_click_handler);
-  
-  // long click config:
-  //window_long_click_subscribe(BUTTON_ID_SELECT, 700, select_long_click_handler, select_long_click_release_handler);
+	// TODO:
+	// Build summary string
+	
+	window_stack_push(s_summary_window, true);
 }
 
-void handle_init(void) {
-  s_main_window = window_create();
+void select_long_click_handler(ClickRecognizerRef recognizer, void *context) {
+	end_talk_and_display_summary();	
+}
+
+void click_config_provider(Window *window) {
+ // Single select click:
+  window_single_click_subscribe(BUTTON_ID_SELECT, select_single_click_handler);	
+	window_single_click_subscribe(BUTTON_ID_UP, up_single_click_handler);
+  
+  // Long click config:
+  window_long_click_subscribe(BUTTON_ID_SELECT, 700, select_long_click_handler, NULL);
+}
+
+void init_main_window() {
+	s_main_window = window_create();
 
 	// Get size of main window layer
 	Layer *window_layer = window_get_root_layer(s_main_window);
@@ -217,21 +236,39 @@ void handle_init(void) {
 	// Configure buttons
 	window_set_click_config_provider(s_main_window, (ClickConfigProvider) click_config_provider);
 
+	window_stack_push(s_main_window, true);
+}
+
+void init_summary_window() {
+	s_summary_window = window_create();
+	
+	Layer *window_layer = window_get_root_layer(s_summary_window);
+	
+	GRect window_bounds = layer_get_bounds(window_layer);
+	
+	s_summary_text = text_layer_create(GRect(0, 0, window_bounds.size.w, window_bounds.size.h));
+	text_layer_set_text(s_summary_text, "Highlights Summary");
+	
+	layer_add_child(window_layer, text_layer_get_layer(s_summary_text));	
+}
+
+void handle_init(void) {
+  
 	// Init comments array
 	for ( int i = 0; i < MAX_COMMENTS; i++ ) {
       comments[ i ] = 0;
   }
 	
-  window_stack_push(s_main_window, true);
+	init_main_window();
+	
+	init_summary_window();
 	
 	// Start out paused
-	set_paused(true);
-	
-	vibes_short_pulse();
+	set_Paused(true);	
 }
 
-void handle_deinit(void) {
-  text_layer_destroy(s_timer_layer);
+void destroy_main_window() {
+	text_layer_destroy(s_timer_layer);
 	
 	fonts_unload_custom_font(s_timer_font);
 	
@@ -241,6 +278,18 @@ void handle_deinit(void) {
 	bitmap_layer_destroy(s_background_layer);
 	
   window_destroy(s_main_window);
+}
+
+void destroy_summary_window() {
+	text_layer_destroy(s_summary_text);
+	
+	window_destroy(s_summary_window);
+}
+
+void handle_deinit(void) {
+	destroy_summary_window();
+	
+  destroy_main_window();
 }
 
 int main(void) {
