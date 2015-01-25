@@ -26,17 +26,17 @@ static BitmapLayer *s_background_layer;
 static GBitmap *s_background_bitmap;
 
 /* Summary Window*/
-// TODO: Organize across multipe source files and sort functions
+// TODO: Organize across multiple source files and sort functions
 static Window *s_summary_window;
 static TextLayer *s_summary_text;
 
 
 /* -- Method declarations -- */
-
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed);
 
 void handle_scheduled_vibrations(struct time t);
 
+bool is_Paused();
 void set_Paused(bool pause);
 
 void update_timer_display(struct time t);
@@ -44,12 +44,19 @@ void update_timer_display(struct time t);
 void update_progress_bars_display(Layer *layer, GContext *ctx);
 
 void click_config_provider(Window *window);
-
 void select_single_click_handler(ClickRecognizerRef recognizer, void *context);
-
 void up_single_click_handler(ClickRecognizerRef recognizer, void *context);
+void select_long_click_handler(ClickRecognizerRef recognizer, void *context);
 
 void add_comment();
+
+void display_summary();
+
+void init_main_window();
+void destroy_main_window();
+
+void init_summary_window();
+void destroy_summary_window();
 
 
 /* -- Method implementations -- */
@@ -151,7 +158,8 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 	
 	handle_scheduled_vibrations(t);
 	
-	s_seconds_ellapsed++;
+	// s_seconds_ellapsed++;
+	s_seconds_ellapsed = s_seconds_ellapsed + 5;
 }
 
 void select_single_click_handler(ClickRecognizerRef recognizer, void *context) {  
@@ -165,33 +173,90 @@ void select_single_click_handler(ClickRecognizerRef recognizer, void *context) {
 }
 
 void add_comment() {
-	if (comments_total == 0) {
-		// First comment!
-		
-	}
-	
 	if (comments_total < MAX_COMMENTS) {
 		comments[comments_total] = s_seconds_ellapsed;
+		comments_total++;
 	}
-	
-	comments_total++;
 }
 
 void up_single_click_handler(ClickRecognizerRef recognizer, void *context) {
 	add_comment();
 }
 
-void end_talk_and_display_summary() {
+void display_summary() {
 	set_Paused(true);
 	
-	// TODO:
-	// Build summary string
+	/* -- Calculate lengths and averages -- */
+	static char message_buffer[256] = "";
+	
+	// Avg seconds of comment overhead: mic handling time + hand choosing time :)
+	// TODO: Make this user-configurable
+	const int comment_overhead = 5;
+	
+	int talk_length = s_seconds_ellapsed;
+	
+	int first_comment_start = 0;
+	int comment_length_avg = 0;
+	int comment_length_midmean = 0;
+	int longest = 0;
+	int shortest = 0;
+	
+	if (comments_total > 0) {
+		first_comment_start = comments[0];
+
+		talk_length = first_comment_start - comment_overhead;
+	
+		comment_length_avg = (  s_seconds_ellapsed
+													- first_comment_start
+													- (comment_overhead * comments_total))
+												/ comments_total;
+		
+		longest = s_seconds_ellapsed - comments[comments_total - 1];
+		shortest = longest;
+		
+		// Get longest and shortest comments
+		for ( int i = comments_total - 1, i_len = 0; i > 0; i-- ) {
+      i_len = comments[i] - comments[i - 1];
+			
+			if (i_len > longest) {
+				longest = i_len;
+			}
+			
+			if (i_len < shortest) {
+				shortest = i_len;
+			}	
+  	}
+
+		comment_length_midmean = comment_length_avg;
+			
+		if (comments_total > 2) {
+			comment_length_midmean = (  s_seconds_ellapsed
+																- first_comment_start
+																- longest
+																- shortest
+																- (comment_overhead * 2))
+															/ (comments_total - 2);
+		}
+	}
+	
+	// TODO: Format times as MM:SS
+	snprintf(message_buffer, sizeof(message_buffer), 
+					 "*** Summary ***\nTalk: %i\nComments: %i\nLongest: %i\nShortest: %i\nAverage: %i\nMidmean: %i\nTotal: %i", 
+					 talk_length,
+					 comments_total,
+					 longest,
+					 shortest,
+					 comment_length_avg,
+					 comment_length_midmean,
+					 s_seconds_ellapsed);
+	
+	text_layer_set_text(s_summary_text, message_buffer);
 	
 	window_stack_push(s_summary_window, true);
 }
 
 void select_long_click_handler(ClickRecognizerRef recognizer, void *context) {
-	end_talk_and_display_summary();	
+	display_summary();	
 }
 
 void click_config_provider(Window *window) {
