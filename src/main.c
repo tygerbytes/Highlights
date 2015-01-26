@@ -158,8 +158,7 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 	
 	handle_scheduled_vibrations(t);
 	
-	// s_seconds_ellapsed++;
-	s_seconds_ellapsed = s_seconds_ellapsed + 5;
+	s_seconds_ellapsed++;
 }
 
 void select_single_click_handler(ClickRecognizerRef recognizer, void *context) {  
